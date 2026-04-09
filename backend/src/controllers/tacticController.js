@@ -10,12 +10,23 @@ const tacticController = {
         SELECT tc.*, g.title as goal_title
         FROM tactics tc
         JOIN goals g ON tc.goal_id = g.id
+        JOIN periods p ON g.period_id = p.id
       `;
       const params = [];
+      const conditions = [];
 
       if (goal_id) {
-        query += ' WHERE tc.goal_id = ?';
+        conditions.push('tc.goal_id = ?');
         params.push(goal_id);
+      }
+
+      if (req.query.period_status) {
+        conditions.push('p.status = ?');
+        params.push(req.query.period_status);
+      }
+
+      if (conditions.length > 0) {
+        query += ' WHERE ' + conditions.join(' AND ');
       }
 
       query += ' ORDER BY tc.created_at DESC';

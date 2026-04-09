@@ -7,15 +7,25 @@ const goalController = {
       const { period_id } = req.query;
 
       let query = `
-        SELECT g.*, p.name as period_name
+        SELECT g.*, p.name as period_name, p.status as period_status
         FROM goals g
         JOIN periods p ON g.period_id = p.id
       `;
       const params = [];
+      const conditions = [];
 
       if (period_id) {
-        query += ' WHERE g.period_id = ?';
+        conditions.push('g.period_id = ?');
         params.push(period_id);
+      }
+
+      if (req.query.period_status) {
+        conditions.push('p.status = ?');
+        params.push(req.query.period_status);
+      }
+
+      if (conditions.length > 0) {
+        query += ' WHERE ' + conditions.join(' AND ');
       }
 
       query += ' ORDER BY g.created_at DESC';

@@ -56,7 +56,7 @@ const Tactics = () => {
       setLoading(true);
       const [tacticsRes, goalsRes] = await Promise.all([
         api.get('/tactics', { params: goalIdParam ? { goal_id: goalIdParam } : {} }),
-        api.get('/goals'),
+        api.get('/goals', { params: { period_status: 'active' } }),
       ]);
       setTactics(tacticsRes.data);
       setGoals(goalsRes.data);
