@@ -1,98 +1,99 @@
 # 12 Week Year Tracker
 
-Sistema de acompanhamento de metas baseado na metodologia **12 Week Year**: em vez de planejar o ano
-inteiro, você trabalha em ciclos de 12 semanas, com execução medida todo dia.
+**Meta anual não funciona porque doze meses é tempo demais para sentir urgência.**
+Este sistema aplica a metodologia *12 Week Year*: ciclos de doze semanas, execução medida todo dia
+e cobrança automática por Telegram — sem precisar abrir o sistema para registrar o dia.
 
-O sistema quebra a meta em tarefas diárias, calcula sozinho quanto você precisa fazer por dia,
-recalcula esse número quando você atrasa e cobra a execução por um bot do Telegram.
+![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=nodedotjs&logoColor=white)
+![Express](https://img.shields.io/badge/Express-000000?style=flat-square&logo=express&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=flat-square&logo=mysql&logoColor=white)
+![React](https://img.shields.io/badge/React-61DAFB?style=flat-square&logo=react&logoColor=black)
+![Material UI](https://img.shields.io/badge/Material%20UI-007FFF?style=flat-square&logo=mui&logoColor=white)
+![Telegram](https://img.shields.io/badge/Telegram%20Bot-26A5E4?style=flat-square&logo=telegram&logoColor=white)
 
 ---
 
-## Como o sistema organiza as metas
+## O que ele faz de diferente
+
+**Você não digita a meta diária — o sistema calcula.**
+Informe o total a alcançar, a unidade, sua velocidade por hora e quanto tempo por dia você tem.
+A partir disso o sistema deriva quanto precisa ser feito hoje. Quatro tipos de métrica são
+suportados: sim/não, páginas, horas e unidade personalizada.
+
+**Perdeu um dia? A meta se reajusta sozinha.**
+A redistribuição recalcula o alvo diário como *quanto falta ÷ dias restantes* — contando apenas os
+dias da semana em que aquela tarefa realmente roda. O atraso vira número novo em vez de virar culpa,
+e dá para reajustar uma tarefa ou todas as tarefas ativas do ciclo de uma vez.
+
+**A cobrança chega até você.**
+Cada tarefa tem seu horário de notificação. Um job agendado monta a fila do dia, dispara a mensagem
+no Telegram e recebe a resposta ali mesmo — o registro do dia acontece na conversa.
+
+**Cada tarefa vale só nos dias certos.**
+Treino três vezes por semana e leitura todo dia convivem no mesmo ciclo, com metas diárias
+diferentes calculadas sobre calendários diferentes.
+
+---
+
+## Como está organizado
 
 ```
 Visão            objetivo de longo prazo
- └── Período     ciclo de 12 semanas, com data de início e fim
+ └── Período     ciclo de doze semanas, com data de início e fim
       └── Meta   o que precisa ser alcançado neste ciclo
            └── Tática        como a meta vai ser atingida
                 └── Tarefa   o que é executado no dia a dia
                      └── Log registro diário de execução
 ```
 
-Cada nível é apagado em cascata junto com o pai (`ON DELETE CASCADE`), e o log diário tem chave
-única por tarefa e data — a mesma tarefa não pode ser registrada duas vezes no mesmo dia.
+No fim de um ciclo, o período inteiro pode ser clonado para o seguinte, sem remontar a estrutura.
+
+O painel fecha o ciclo de volta: resumo do período, gráfico de execução semanal, progresso por meta
+e calendário de histórico.
 
 ---
 
-## Funcionalidades
+## Decisões técnicas que valem nota
 
-**Tarefas com quatro tipos de métrica**
-`boolean` (fez ou não fez), `pages`, `hours` e `custom`. Nas métricas quantitativas você informa o
-total a alcançar, a unidade, a velocidade por hora e o tempo diário disponível — a meta diária é
-calculada a partir disso, não digitada.
+**Dias da semana em bitmask.** Cada tarefa guarda seus dias num único `TINYINT`
+(`Dom=1, Seg=2, Ter=4, Qua=8, Qui=16, Sex=32, Sáb=64`; `127` = todos). Uma coluna em vez de sete,
+e a consulta de "quais tarefas valem hoje" vira uma operação de bit.
 
-**Redistribuição automática**
-Quando um dia é perdido, a meta diária é recalculada como *quanto falta ÷ dias restantes no período*,
-considerando apenas os dias da semana em que a tarefa está configurada para rodar. Pode ser disparada
-para uma tarefa ou para todas as tarefas ativas do período de uma vez.
+**Log diário idempotente.** `UNIQUE (task_id, log_date)` no banco — a mesma tarefa não pode ser
+registrada duas vezes no mesmo dia, mesmo com clique duplo ou resposta repetida no Telegram.
+A regra é do banco, não do código.
 
-**Agenda por dia da semana**
-Cada tarefa define em quais dias ela vale, através de um bitmask (`Dom=1, Seg=2, Ter=4, Qua=8,
-Qui=16, Sex=32, Sáb=64` — o padrão `127` significa todos os dias).
+**Integridade em cascata.** Toda a hierarquia usa `ON DELETE CASCADE`: apagar uma visão não deixa
+período, meta, tática, tarefa ou log órfão para trás.
 
-**Bot do Telegram**
-Cada tarefa tem seu horário de notificação (padrão 20:00). Um job agendado monta a fila de
-notificações, envia a cobrança do dia e recebe a resposta pelo próprio Telegram — o registro do dia
-pode ser feito sem abrir o sistema.
+**Falha ruidosa na partida.** Sem conexão com o banco o processo encerra em vez de subir quebrado.
+Já o bot do Telegram é opcional: sem o token, o sistema sobe normalmente e apenas o desativa.
 
-**Painel de acompanhamento**
-Resumo do período, gráfico semanal de execução, progresso por meta, calendário de histórico e
-clonagem de um período inteiro para o ciclo seguinte.
+**Um processo em produção.** Em produção o backend serve o build do frontend, então o deploy é
+um único processo, com uma porta e um vhost.
 
 ---
 
-## Stack
+## Rodando localmente
 
-**Backend** Node.js · Express · MySQL · JWT · bcryptjs · express-validator · node-cron · node-telegram-bot-api
-**Frontend** React 18 · Material UI 5 · Recharts · React Router 6 · Axios · date-fns
-
-Em produção o backend serve o build do frontend, então tudo sobe como um processo só.
-
----
-
-## Como rodar
-
-**Pré-requisitos:** Node.js e um MySQL acessível.
+Requer Node.js e um MySQL acessível.
 
 ```bash
-# 1. instalar as dependências da raiz, do backend e do frontend
-npm run install:all
-
-# 2. configurar o ambiente
-cp .env.example .env
-#    edite o .env com os dados do banco, o JWT_SECRET, o usuário admin
-#    e o token do bot do Telegram
-
-# 3. criar as tabelas
-npm run migrate
-
-# 4. subir backend e frontend juntos
-npm run dev
+npm run install:all          # dependências da raiz, do backend e do frontend
+cp .env.example .env         # preencha banco, JWT_SECRET, admin e token do bot
+npm run migrate              # cria as tabelas
+npm run dev                  # backend :3000 e frontend :3001
 ```
 
-Backend em `http://localhost:3000`, frontend em `http://localhost:3001`.
-A API responde sob o prefixo `/api` e tem um `/api/health` para checagem.
-
-**Produção**
-
-```bash
-npm run build   # gera o build do frontend
-npm start       # sobe o backend, que também serve o frontend
-```
+Em produção: `npm run build` e depois `npm start`.
+A API responde sob `/api`, com `/api/health` para checagem.
 
 ---
 
-## Variáveis de ambiente
+<details>
+<summary><b>Referência — variáveis de ambiente, estrutura e API</b></summary>
+
+### Variáveis de ambiente
 
 | Variável | Para que serve |
 |---|---|
@@ -103,12 +104,7 @@ npm start       # sobe o backend, que também serve o frontend
 | `TELEGRAM_BOT_TOKEN` | Token do bot, criado no @BotFather |
 | `TZ` | Fuso horário usado pelo agendamento |
 
-Sem `TELEGRAM_BOT_TOKEN` o sistema sobe normalmente e apenas desativa o bot.
-Sem conexão com o banco, o processo encerra na inicialização em vez de subir quebrado.
-
----
-
-## Estrutura
+### Estrutura
 
 ```
 ├── backend
@@ -129,9 +125,7 @@ Sem conexão com o banco, o processo encerra na inicialização em vez de subir 
 └── 12-week-year-tracker-spec.md    especificação completa do sistema
 ```
 
----
-
-## API
+### API
 
 Todas as rotas exigem token JWT, exceto `POST /api/auth/login` e `GET /api/health`.
 
@@ -145,3 +139,5 @@ Todas as rotas exigem token JWT, exceto `POST /api/auth/login` e `GET /api/healt
 | Tarefas | CRUD em `/tasks` · `/tasks/today` · `/tasks/:id/logs` |
 | Logs | `POST /tasks/:taskId/complete` · `POST /tasks/:taskId/skip` · `/logs/week/:weekNumber` · `/logs/calendar` |
 | Dashboard | `/dashboard/summary` · `/dashboard/weekly-chart` · `/dashboard/goals-progress` |
+
+</details>
